@@ -18,8 +18,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torchvision
 import utils
+import torch.cuda
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 
 def prepare_test(model, testloader):
     '''forward-pass the testing samples into the model in training stage to adjust Batch Norm parameters. See    
@@ -35,17 +37,24 @@ def prepare_test(model, testloader):
         input, target = next(iter(testloader))
         output = model(input)
     model = model.eval()
-    
+
+
 class System():
     '''
         main class, each method is a task to perform, specified in option "task" in config file
     '''
+
     def __init__(self, cfg):
         self.args = cfg
+        print(torch.cuda.memory_allocated())
         self.init_data()
+        print(torch.cuda.memory_allocated())
         self.init_para()
+        print(torch.cuda.memory_allocated())
         self.init_net()
-            
+        print(torch.cuda.memory_allocated())
+
+
     def init_data(self):
         '''if train
                create: training dataset, dataloader
@@ -56,49 +65,48 @@ class System():
         '''
         print('initializing data')
         if self.args.main_task == 'train':
-            self.trainset = utils.mydataset(input_path=self.args.train_input_path, 
-                                       target_path=self.args.train_target_path, 
-                                       length=self.args.n_train_samples)
-            self.trainloader = torch.utils.data.DataLoader(self.trainset, 
+            self.trainset = utils.mydataset(input_path=self.args.train_input_path,
+                                            target_path=self.args.train_target_path,
+                                            length=self.args.n_train_samples)
+            self.trainloader = torch.utils.data.DataLoader(self.trainset,
                                                            batch_size=self.args.train_batch_size,
-                                                           shuffle=True)  
-            
-            self.testset = utils.mydataset(input_path=self.args.test_input_path, 
-                                          target_path=self.args.test_target_path, 
-                                          length=self.args.n_test_samples)
-            self.testloader = torch.utils.data.DataLoader(self.testset, 
+                                                           shuffle=True)
+
+            self.testset = utils.mydataset(input_path=self.args.test_input_path,
+                                           target_path=self.args.test_target_path,
+                                           length=self.args.n_test_samples)
+            self.testloader = torch.utils.data.DataLoader(self.testset,
                                                           batch_size=1,
-                                                          shuffle=True) 
+                                                          shuffle=True)
             if self.args.preview_data:
                 input, target = next(iter(self.trainloader))
-                input = input[0,0:1]
-                target = target[0,0:1]
+                input = input[0, 0:1]
+                target = target[0, 0:1]
                 utils.plot_sub_fig(torch.cat([input, target], dim=0), 1, 2, title=('train input', 'train target'),
-                                   save_path=self.args.fig_save_path+'train preview.png') 
+                                   save_path=self.args.fig_save_path + 'train preview.png')
                 input, target = next(iter(self.testloader))
-                input = input[0,0:1]
-                target = target[0,0:1]
+                input = input[0, 0:1]
+                target = target[0, 0:1]
                 utils.plot_sub_fig(torch.cat([input, target], dim=0), 1, 2, title=('test input', 'test target'),
-                                   save_path=self.args.fig_save_path+'test preview.png')            
+                                   save_path=self.args.fig_save_path + 'test preview.png')
         else:
-            self.testset = utils.mydataset(input_path=self.args.test_input_path, 
-                                          target_path=self.args.test_target_path, 
-                                          length=self.args.n_test_samples)
-            self.testloader = torch.utils.data.DataLoader(self.testset, 
+            self.testset = utils.mydataset(input_path=self.args.test_input_path,
+                                           target_path=self.args.test_target_path,
+                                           length=self.args.n_test_samples)
+            self.testloader = torch.utils.data.DataLoader(self.testset,
                                                           batch_size=1,
-                                                          shuffle=True) 
+                                                          shuffle=True)
             if self.args.task != 'overall snr increase':
                 self.x0, self.t = self.testset[self.args.test_sample_id]
             else:
                 self.x0, self.t = self.testset[0]
             if self.args.preview_data:
                 utils.plot_sub_fig(torch.cat([self.x0, self.t], dim=0), 1, 2, title=('test input', 'test target'),
-                                   save_path=self.args.fig_save_path+'test preview.png')
+                                   save_path=self.args.fig_save_path + 'test preview.png')
             if len(self.x0.size()) == 3:
                 self.x0.unsqueeze_(dim=0)
                 self.t.unsqueeze_(dim=0)
- 
-        
+
     def init_para(self):
         '''
         init some parameters needed in the process:
@@ -108,24 +116,21 @@ class System():
                self.criterion   : loss function, default is torch.nn.MSELoss()
            if in testing, if there is a mask in the imaging operator, create self.mask
         '''
-        
-        print('initializing parameters') 
+
+        print('initializing parameters')
         if self.args.main_task == 'train':
             self.dummy_input = torch.rand(1, self.args.inC, self.args.h, self.args.w).to(device)
             self.loss_plot = []
             if self.args.criterion == 'MSE':
                 self.criterion = nn.MSELoss()
             else:
-                raise Exception('Criterion not recognized')            
+                raise Exception('Criterion not recognized')
         else:
             if self.args.mask:
                 self.mask = torch.tensor(scipy.io.loadmat(self.args.mask)['mask']).float().to(device)
             if self.args.weight:
                 self.weight = torch.tensor(scipy.io.loadmat(self.args.weight)['w']).float().to(device)
-        
-        
 
-                
     def init_net(self):
         '''
         init the CNNs
@@ -136,34 +141,33 @@ class System():
         '''
         print('initializing net')
         if self.args.main_task == 'train':
-            if self.args.net == 'Unet':                                             
+            if self.args.net == 'Unet':
                 self.net = utils.Unet(inC=self.args.inC,
-                                       outC=self.args.outC,
-                                       momentum=self.args.train_momentum).to(device)
+                                      outC=self.args.outC,
+                                      momentum=self.args.train_momentum).to(device)
 
-                self.net_tmp = utils.Unet(inC=self.args.inC,                        
+                self.net_tmp = utils.Unet(inC=self.args.inC,
                                           outC=self.args.outC,
                                           momentum=self.args.test_momentum).to(device)
-                
+
             ##########################################    add elif here if using another net
             else:
                 raise Exception('Neural net not recognized')
-        
-            if self.args.net_load_path:                                                
+
+            if self.args.net_load_path:
                 checkpoint = torch.load(self.args.net_load_path)
                 self.net.load_state_dict(checkpoint['net_state_dict'])
         else:
-            if self.args.net == 'Unet':                                             
+            if self.args.net == 'Unet':
                 self.net = utils.Unet(inC=self.args.inC,
-                                       outC=self.args.outC,
-                                       momentum=self.args.test_momentum).to(device) 
+                                      outC=self.args.outC,
+                                      momentum=self.args.test_momentum).to(device)
             else:
                 raise Exception('Neural net not recognized')
-                
+
             checkpoint = torch.load(self.args.net_load_path)
             self.net.load_state_dict(checkpoint['net_state_dict'])
-                
-    
+
     def init_optimizer(self, lr):
         print('initializing optimizer')
         if self.args.optimizer == 'Adam':
@@ -173,11 +177,10 @@ class System():
         else:
             raise Exception('Optimizer not recognized')
 
-        if self.args.optimizer_load_path:                                           #Option to load a model 
-            checkpoint = torch.load(self.args.optimizer_load_path)            
-            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])      
-                   
-        
+        if self.args.optimizer_load_path:  # Option to load a model
+            checkpoint = torch.load(self.args.optimizer_load_path)
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
     def train(self, stage):
         '''
         The train function
@@ -193,7 +196,7 @@ class System():
                       output3 = model(target)
 
         '''
-        #init 
+        # init
         if stage == 1:
             print('input --> target (1)')
             n_epoch = self.args.n_epoch1
@@ -212,53 +215,55 @@ class System():
             scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=self.args.d_e3, gamma=self.args.d_lr3)
             train_save = self.args.train3_save
             test_save = self.args.test3_save
-        
-        #main loop
+
+        # main loop
         for e in range(n_epoch):
+            print("Current epoch:", e)
             loss_per_epoch = 0.0
-            for input, target in self.trainloader:               
-                #calculate loss (differs depending on the stage)
+            for input, target in self.trainloader:
+                torch.cuda.empty_cache()
+                # calculate loss (differs depending on the stage)
                 output = self.net(input)
                 if stage == 2:
                     input1 = output.clone().detach()
                     output1 = self.net(input1)
-                    loss = (self.criterion(output, target) + self.criterion(output1, target))/2    
+                    loss = (self.criterion(output, target) + self.criterion(output1, target)) / 2
                 elif stage == 3:
                     input1 = output.clone().detach()
                     output1 = self.net(input1)
                     output2 = self.net(target.clone().detach())
                     loss = (self.criterion(output, target)
-                            + self.criterion(output1, target) 
-                            + self.criterion(output2, target))/3  
+                            + self.criterion(output1, target)
+                            + self.criterion(output2, target)) / 3
                 else:
-                    loss = self.criterion(output, target)                    
-                loss_per_epoch += loss.item()                
-                #backward
+                    loss = self.criterion(output, target)
+                loss_per_epoch += loss.item()
+                # backward
                 self.optimizer.zero_grad()
                 loss.backward()
-                self.optimizer.step()            
-            self.loss_plot.append(loss_per_epoch/len(self.trainloader))
-            
-            #log
+                self.optimizer.step()
+            self.loss_plot.append(loss_per_epoch / len(self.trainloader))
+
+            # log
             if self.args.print_loss:
-                if e%self.args.log_step == self.args.log_step-1:
-                    print('epoch[%d] average loss: %f'% (e+1, self.loss_plot[-1]))
-            
-            #reduce lr
+                if e % self.args.log_step == self.args.log_step - 1:
+                    print('epoch[%d] average loss: %f' % (e + 1, self.loss_plot[-1]))
+
+            # reduce lr
             scheduler.step()
-            
-        #save the model
+
+        # save the model
         if train_save:
             torch.save({'net_state_dict': self.net.state_dict(),
                         'optimizer_state_dict': self.optimizer.state_dict(),
                         'loss_plot': self.loss_plot},
-                        self.args.save_path+str(stage)+'-train.pth')
-        if test_save:                   
+                       self.args.save_path + str(stage) + '-train.pth')
+        if test_save:
             self.net_tmp.load_state_dict(copy.deepcopy(self.net.state_dict()))
             prepare_test(self.net_tmp, testloader=self.testloader)
-            torch.save({'net_state_dict': self.net_tmp.state_dict()}, self.args.save_path+str(stage)+'-test.pth') 
-            torch.onnx.export(self.net_tmp, self.dummy_input, self.args.save_path+str(stage)+'.onnx')        
-    
+            torch.save({'net_state_dict': self.net_tmp.state_dict()}, self.args.save_path + str(stage) + '-test.pth')
+            torch.onnx.export(self.net_tmp, self.dummy_input, self.args.save_path + str(stage) + '.onnx')
+
     def plot_loss(self):
         '''
         function to plot loss vs epoch
@@ -269,9 +274,9 @@ class System():
         plt.ylabel('loss')
         plt.show()
         if self.args.fig_save_path:
-            plt.savefig(self.args.fig_save_path+'train loss.png')
+            plt.savefig(self.args.fig_save_path + 'train loss.png')
             plt.close(fig)
-        
+
     def test(self, x0, t, gamma, h, ht):
         '''
         Function test: perform RPGD
@@ -288,28 +293,28 @@ class System():
         '''
         if self.args.task == 'test':
             print('In test:')
-            
+
         c = self.args.c
         alpha = self.args.alpha
         self.net.eval()
-        
+
         with torch.no_grad():
             x = x0.clone().detach()
             y = h(x0)
             best_snr = 0
             for k in range(self.args.n_test_iter):
                 z = self.net(x)
-                if k>0:
-                    if (z-x).pow(2).sum()>c*(z_prev-x_prev).pow(2).sum():
-                        alpha = c*(z_prev-x_prev).pow(2).sum()/(z-x).pow(2).sum()*alpha
-                x = alpha*z + (1-alpha)*x
-                x = x - gamma*ht(h(x)-y)    
-                loss = (h(x)-y).pow(2).sum()
+                if k > 0:
+                    if (z - x).pow(2).sum() > c * (z_prev - x_prev).pow(2).sum():
+                        alpha = c * (z_prev - x_prev).pow(2).sum() / (z - x).pow(2).sum() * alpha
+                x = alpha * z + (1 - alpha) * x
+                x = x - gamma * ht(h(x) - y)
+                loss = (h(x) - y).pow(2).sum()
                 snr, rec = utils.RSNR(x, t)
-                if snr>best_snr:
-                    best_snr, best_rec = snr, rec  
-                if (self.args.test_loss) and (k%10==9):
-                    print('iteration:', k+1)
+                if snr > best_snr:
+                    best_snr, best_rec = snr, rec
+                if (self.args.test_loss) and (k % 10 == 9):
+                    print('iteration:', k + 1)
                     print('loss = ', loss.item())
                     print('max pixel value = ', rec.abs().max().item())
                     print('alpha = ', float(alpha))
@@ -317,10 +322,10 @@ class System():
                     print('\n')
                 z_prev = z
                 x_prev = x
-                if k%self.args.dk==self.args.dk-1: 
+                if k % self.args.dk == self.args.dk - 1:
                     gamma /= self.args.dgamma
         return best_snr, best_rec
-    
+
     def reconstruct(self, x0, t, h, ht, idx=''):
         '''
         Function reconstruct: sweep gamma0 provided in config file to find the best gamma
@@ -336,27 +341,27 @@ class System():
             best_snr : type Float, RSNR of the best reconstruction 
             best_rec : type torch.tensor, the best reconstruction
          '''
-        print('reconstructing sample '+idx)
+        print('reconstructing sample ' + idx)
         l = self.args.gamma0[0]
         r = self.args.gamma0[-1]
         snr_plot = np.array([])
         gamma = np.array([])
         gamma_tmp = self.args.gamma0
-        while abs(r-l)>self.args.tol:
+        while abs(r - l) > self.args.tol:
             best_snr = 0
             gamma = np.append(gamma, gamma_tmp)
             for i in gamma_tmp:
                 snr, rec = self.test(x0=x0, t=t, gamma=i, h=h, ht=ht)
-                if snr>best_snr: 
+                if snr > best_snr:
                     best_snr, best_rec = snr, rec
                     best_gamma = i
                 snr_plot = np.append(snr_plot, snr)
-            d = (r-l)/5
-            l = best_gamma -d
-            r = best_gamma +d
+            d = (r - l) / 5
+            l = best_gamma - d
+            r = best_gamma + d
             gamma_tmp = np.linspace(l, r, 4)
         arg = np.argsort(gamma)
-        
+
         if self.args.plot_gamma_snr:
             fig = plt.figure()
             plt.plot(gamma[arg], snr_plot[arg])
@@ -364,15 +369,7 @@ class System():
             plt.ylabel('snr')
             plt.show()
             if self.args.fig_save_path:
-                plt.savefig(self.args.fig_save_path+'PGD loss '+idx+'.png')
+                plt.savefig(self.args.fig_save_path + 'PGD loss ' + idx + '.png')
                 plt.close(fig)
-            
+
         return best_snr, best_rec
-    
-    
-    
-                    
-    
-        
-            
-                

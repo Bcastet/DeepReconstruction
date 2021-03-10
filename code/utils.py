@@ -26,8 +26,7 @@ class conv(nn.Module):
                                nn.ReLU())
 
     def forward(self, x):
-        x = self.c(x)
-        return x
+        return self.c(x)
 
 
 class convT(nn.Module):
@@ -40,8 +39,7 @@ class convT(nn.Module):
                                 nn.ReLU())
 
     def forward(self, x):
-        x = self.cT(x)
-        return x
+        return self.cT(x)
 
 
 class double_conv(nn.Module):
@@ -53,8 +51,7 @@ class double_conv(nn.Module):
             conv(outC, outC, kernel_size=kernel_size, padding=padding, momentum=momentum))
 
     def forward(self, x):
-        x = self.conv2x(x)
-        return x
+        return self.conv2x(x)
 
 
 class inconv(nn.Module):
@@ -63,8 +60,7 @@ class inconv(nn.Module):
         self.conv = double_conv(inC, outC, kernel_size=kernel_size, padding=padding, momentum=momentum)
 
     def forward(self, x):
-        x = self.conv(x)
-        return x
+        return self.conv(x)
 
 
 class down(nn.Module):
@@ -76,8 +72,7 @@ class down(nn.Module):
             double_conv(inC, outC, kernel_size=3, padding=1, momentum=momentum))
 
     def forward(self, x):
-        x = self.go_down(x)
-        return x
+        return self.go_down(x)
 
 
 class up(nn.Module):
@@ -91,8 +86,8 @@ class up(nn.Module):
         # x1 is data from a previous layer, x2 is current input
         x2 = self.convt1(x2)
         x = torch.cat([x1, x2], dim=1)
-        x = self.conv2x(x)
-        return x
+        del x2
+        return self.conv2x(x)
 
 
 class outconv(nn.Module):
@@ -101,8 +96,7 @@ class outconv(nn.Module):
         self.conv = conv(inC, outC, kernel_size=kernel_size, padding=padding, momentum=momentum)
 
     def forward(self, x):
-        x = self.conv(x)
-        return x
+        return self.conv(x)
 
 
 def weights_init(m):
@@ -122,14 +116,36 @@ class Unet(nn.Module):
         self.outc = outconv(16, outC, 3, 1, momentum)
 
     def forward(self, x):
+        #print(x.shape)
+        #print("1:", torch.cuda.memory_allocated())
+        torch.cuda.empty_cache()
         x_input = x.clone().detach()
+        #print("2:", torch.cuda.memory_allocated())
+        torch.cuda.empty_cache()
+
         x1 = self.inc(x)
+        #print("3:", torch.cuda.memory_allocated())
+        torch.cuda.empty_cache()
+
         x2 = self.down1(x1)
+        #print("4:", torch.cuda.memory_allocated())
+        torch.cuda.empty_cache()
+
         x3 = self.down2(x2)
+        #print("5:", torch.cuda.memory_allocated())
+        torch.cuda.empty_cache()
 
         x = self.up1(x2, x3)
+        #print("6:", torch.cuda.memory_allocated())
+        torch.cuda.empty_cache()
+
+        del x2
+        del x3
+
         x = self.up2(x1, x)
+        #print(torch.cuda.memory_allocated())
         x = self.outc(x)
+        #print("End forward")
         return x + x_input
 
 

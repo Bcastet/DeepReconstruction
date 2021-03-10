@@ -16,6 +16,7 @@ import torch
 
 if __name__ == '__main__':
     # read argument
+    torch.cuda.empty_cache()
     parser = argparse.ArgumentParser()
     parser.add_argument('config', default='default.cfg', help='Specify config file', metavar='FILE')
     args = parser.parse_args()
