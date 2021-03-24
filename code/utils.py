@@ -116,73 +116,61 @@ class Unet(nn.Module):
         self.outc = outconv(16, outC, 3, 1, momentum)
 
     def forward(self, x):
-        #print(x.shape)
-        #print("1:", torch.cuda.memory_allocated())
+        # print(x.shape)
+        # print("1:", torch.cuda.memory_allocated())
         torch.cuda.empty_cache()
         x_input = x.clone().detach()
-        #print("2:", torch.cuda.memory_allocated())
+        # print("2:", torch.cuda.memory_allocated())
         torch.cuda.empty_cache()
 
         x1 = self.inc(x)
-        #print("3:", torch.cuda.memory_allocated())
+        # print("3:", torch.cuda.memory_allocated())
         torch.cuda.empty_cache()
 
         x2 = self.down1(x1)
-        #print("4:", torch.cuda.memory_allocated())
+        # print("4:", torch.cuda.memory_allocated())
         torch.cuda.empty_cache()
 
         x3 = self.down2(x2)
-        #print("5:", torch.cuda.memory_allocated())
+        # print("5:", torch.cuda.memory_allocated())
         torch.cuda.empty_cache()
 
         x = self.up1(x2, x3)
-        #print("6:", torch.cuda.memory_allocated())
+        # print("6:", torch.cuda.memory_allocated())
         torch.cuda.empty_cache()
 
         del x2
         del x3
 
         x = self.up2(x1, x)
-        #print(torch.cuda.memory_allocated())
+        # print(torch.cuda.memory_allocated())
         x = self.outc(x)
-        #print("End forward")
+        # print("End forward")
         return x + x_input
 
 
 # =====================Dataset==========================
 class mydataset(torch.utils.data.Dataset):
-    '''
-    class mydataset(input_path, target_path, length): dataset[i] returns (input, target) each of size [c,h,w]
-    Input: 
-        input_path, target_path: type string, the PATH from the folder containing the code being run to the folder 
-                                 containing the input/target samples.
-        length : type int, the length of the dataset
-    
-    Example: 
-    
-    input_path = '../data/train input/'
-    target_path = '../data/train target/'
-    dataset = mydataset(input_path=input_path, target_path=target_path, length=500)
-    dataset[0] --> 1st sample (1.mat) represented as a tuple of (input, target)
-    
-    Note: in the folder corresponding to the path, the samples are presented as 1.mat, 2.mat, ...
-          the file (idx.mat in input_path) is the noisy sample of (idx.mat in target_path)
 
-    '''
 
-    def __init__(self, input_path, target_path, length):
+    def __init__(self, input_path, target_path, length, original_lenght):
         super(mydataset, self).__init__()
         self.input_path = input_path
         self.target_path = target_path
         self.length = length
+        self.original_lenght = original_lenght
 
     def __len__(self):
         return self.length
 
     def __getitem__(self, idx):
-        input_loadpath = self.input_path + str(idx + 1) + '.mat'
+        idx = int((idx / self.length) * self.original_lenght)
+        patch_idx = idx % 64
+        if patch_idx // 8 == 0 or patch_idx // 8 == 7 or patch_idx % 8 == 0 or patch_idx % 8 == 7:
+            idx = (idx - patch_idx) + 28
+        input_loadpath = self.input_path + str(idx) + '.mat'
         input_image = torch.tensor(scipy.io.loadmat(input_loadpath)['x'])
-        target_loadpath = self.target_path + str(idx + 1) + '.mat'
+        target_loadpath = self.target_path + str(idx) + '.mat'
         target_image = torch.tensor(scipy.io.loadmat(target_loadpath)['x'])
         input_image = input_image.float()
         target_image = target_image.float()

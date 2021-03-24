@@ -54,7 +54,6 @@ class System():
         self.init_net()
         print(torch.cuda.memory_allocated())
 
-
     def init_data(self):
         '''if train
                create: training dataset, dataloader
@@ -67,14 +66,14 @@ class System():
         if self.args.main_task == 'train':
             self.trainset = utils.mydataset(input_path=self.args.train_input_path,
                                             target_path=self.args.train_target_path,
-                                            length=self.args.n_train_samples)
+                                            length=self.args.n_train_samples, original_lenght=500000)
             self.trainloader = torch.utils.data.DataLoader(self.trainset,
                                                            batch_size=self.args.train_batch_size,
                                                            shuffle=True)
 
             self.testset = utils.mydataset(input_path=self.args.test_input_path,
                                            target_path=self.args.test_target_path,
-                                           length=self.args.n_test_samples)
+                                           length=self.args.n_test_samples, original_lenght=200)
             self.testloader = torch.utils.data.DataLoader(self.testset,
                                                           batch_size=1,
                                                           shuffle=True)
@@ -92,7 +91,7 @@ class System():
         else:
             self.testset = utils.mydataset(input_path=self.args.test_input_path,
                                            target_path=self.args.test_target_path,
-                                           length=self.args.n_test_samples)
+                                           length=self.args.n_test_samples, original_lenght=200)
             self.testloader = torch.utils.data.DataLoader(self.testset,
                                                           batch_size=1,
                                                           shuffle=True)
